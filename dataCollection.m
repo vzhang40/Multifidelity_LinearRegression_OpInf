@@ -27,31 +27,40 @@ p = 6000; q = 20;
 para = getRandIC(p, q);
 x0 = getIC(x, para);
 x0l = getIC(xl, para);
-x0l = interp1(xl, x0l, x);
 
+%% Different low fidelity models
+x0l1 = interp1(xl, x0l, x, "linear"); 
+x0l2 = interp1(xl, x0l, x, "spline"); 
+x0l = {x0l1 x0l2};
+
+q = 1;
 datah = zeros(N(1), p*q);
 datahdot = zeros(N(1), p*q);
-datal = zeros(N(1), p*q);
-dataldot = zeros(N(1), p*q);
+datal = cell(1, 2);
+dataldot = cell(1, 2);
+
 for i = 1:p*q
     Xhtemp = backwardEuler(A, x0(:, i), t);
     Xhdottemp = getDot(Xhtemp, t);
     Xhtemp = Xhtemp(:, 2:end);
     datah(:, i) = Xhtemp;
     datahdot(:, i) = Xhdottemp;
+    
+    for j = 1:2
+        Xltemp = backwardEuler(A, x0l{j}(:, i), tl);
+        Xltemp = interp1(tl, Xltemp', t)';
+        Xldottemp = getDot(Xltemp, t);
+        Xltemp = Xltemp(:, 2:end);
+        datal{j}(:, i) = Xltemp;
+        dataldot{j}(:, i) = Xldottemp;
+    end
 
-    Xltemp = backwardEuler(A, x0l(:, i), tl);
-    Xltemp = interp1(tl, Xltemp', t)';
-    Xldottemp = getDot(Xltemp, t);
-    Xltemp = Xltemp(:, 2:end);
-    datal(:, i) = Xltemp;
-    dataldot(:, i) = Xldottemp;
     if mod(i, p*q./20) == 0
         disp("Percent Done: " + num2str(i*100./(p*q)) + "%")
     end
 end
 
-save("data" + num2str(timesteps) + ".mat","A","datah", "datahdot", "datal", "dataldot", "timesteps")
+save("data" + num2str(2) + ".mat","A","datah", "datahdot", "datal", "dataldot", "timesteps")
 
 %% functions
 function param = getRandIC(p, q)
@@ -61,7 +70,7 @@ function param = getRandIC(p, q)
 % OUTPUTS: 
 %   param : (2 x pq) parameters [a; b] assoicated with each intial
 %       condition
-    
+    if q ~= 0
     % Generating random amplitudes
     a = rand(p, 1);
 
@@ -72,6 +81,10 @@ function param = getRandIC(p, q)
     param = [repmat(a', 1, q); repelem(b', 1, p)];
     inds = randperm(p*q);
     param = param(:, inds);
+    else 
+        a = rand(p, 1);
+        param = [a'; zeros(1, p)];
+    end
 end
 
 function x0 = getIC(x, param)

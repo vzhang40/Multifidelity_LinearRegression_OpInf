@@ -1,9 +1,8 @@
 %% Problem Set-Up
 clear; close all; clc
 
-%% Data
-load("data1.mat")
-rbg = orderedcolors("gem");
+%% 1D Periodic Heat Equation
+load("heatEqData.mat")
 
 % Getting POD data with hifi data
 [U, ~, ~] = svd(datah, "econ");
@@ -47,13 +46,8 @@ Xhr = Ur'*datah;
 Xhrdot = Ur'*datahdot;
 
 % Reduced Lofi Data
-Xlr = Ur'*datal{2};
-Xlrdot = Ur'*dataldot{2};
-
-[~, Xlr] = procrustes(Xlr', Xhr');
-Xlr = Xlr';
-[~, Xlrdot] = procrustes(Xlrdot', Xhrdot');
-Xlrdot = Xlrdot';
+Xlr = Ur'*datal;
+Xlrdot = Ur'*dataldot;
 
 % Taking the covariance to be exact
 XXT = (1./size(Xhr, 2))*(Xhr*Xhr'); 
@@ -173,6 +167,7 @@ end
 end
 
 %% Plotting
+rbg = orderedcolors("gem");
 figure(1)
 for r = 1:8
     subplot(2, 4, r)
