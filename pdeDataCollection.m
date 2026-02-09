@@ -1,6 +1,6 @@
-%% This script collects 120000 snapshot vectors to 
-%
-%
+% This script collects 120000 snapshot vectors for the 1D Heat Equation and
+% the 1D Viscous Burger's Equation for a bifidelity operator inference
+% experiment.
 
 clear; close all; clc;
 
@@ -180,7 +180,7 @@ function X = semiEuler(A, H, x0, time)
 % This function uses the semi-implicit euler's integration scheme.
 % INPUTS:
 %   A - (N x N) linear operator
-%   H - (N x (N+1)C(2)) quadratic operator
+%   H - (N x N^2) quadratic operator
 %   x0 - (N x 1) initial condition
 %   time - (1 x K) vector of times
 % OUTPUTS:
