@@ -1,4 +1,7 @@
 function param = getRandIC(p, q)
+% This function randomly selects parameter inputs for a random initial
+% condition.
+%
 % INPUTS: 
 %   p - number of random amplitude parameters
 %   q - number of random frequency parameters

@@ -18,25 +18,26 @@ A = (mu/dx^2)*(diag(-2*ones(N, 1), 0) + diag(ones(N-1, 1), -1) + diag(ones(N-1, 
 operators.A = A;
 
 if flag == "Burger"
+    H = zeros(N, N^2);
 
-H = zeros(N, N^2);
-
-for i = 1:N
-index = N*(i-1) + i;
-if i ~= 1
-    H(i, index - 1) = -1;
-else
-    H(i, end - (N-1)) = -1;
+    for i = 1:N
+    index = N*(i-1) + i;
+    if i ~= 1
+        H(i, index - 1) = -1;
+    else
+        H(i, end - (N-1)) = -1;
+    end
+    
+    if i ~= N
+        H(i, index + 1) = 1;
+    else
+        H(i, N) = 1;
+    end
+    end
+    
+    H = (1/(2*dx)).*H;
+    operators.H = H;
+    operators.F = eliminate(H);
 end
-
-if i ~= N
-    H(i, index + 1) = 1;
-else
-    H(i, N) = 1;
-end
-end
-
-H = (1/(2*dx)).*H;
-operators.H = H;
-end
+ 
 end

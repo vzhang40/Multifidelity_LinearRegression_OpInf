@@ -3,7 +3,7 @@ clear; close all; clc
 
 %% 1D Periodic Heat Equation
 addpath("data_files")
-load("heatEqData.mat")
+load("BurgerEqData.mat")
 
 % Getting POD data with hifi data
 [U, ~, ~] = svd(datah, "econ");
@@ -12,7 +12,7 @@ load("heatEqData.mat")
 p = [10, 50, 100, 1000, 5000];
 
 % Costs
-w = [1; 0.01];%16^2/(128^2)]; % about 0.0156
+w = [1; 0.01]; %16^2/(128^2)]; % about 0.0156
 
 %% Change r for debugging
 r = 12;
@@ -96,7 +96,7 @@ disp("Rank sizes " + num2str(inds(~mask)) + " exhibit higher MF trace of covaria
 
 % testing cost versus correlation
 RHS = (rhos(:, 1:end-2).^2 - rhos(:, 2:end-1).^2) ./ (rhos(:, 2:end-1).^2 - rhos(:, 3:end).^2);
-mask1 = w(1)./w(2:end) > RHS;T
+mask1 = w(1)./w(2:end) > RHS;
 
 % testing normalized with cost variance p = 1, w1 = 1
 v_MC = sigma1.^2;

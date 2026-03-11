@@ -4,217 +4,329 @@ clear; close all; clc
 %% 1D Periodic Heat Equation
 addpath("data_files")
 addpath("functions")
-load("heatEqData.mat")
+load("1heatEqData.mat")
 
-% Getting POD basis with high fidelity state data
-[U, ~, ~] = svd(datah, "econ");
-
+%% Analysis Set-up
 % Budgets
 p = [10, 50, 100, 1000, 2000];
 
 % Costs, calculated using mesh dimension
 w = [1; 16^2/128^2];
 
+% Number of basis sizes tested
+R = 8;
+
 % Number of Replicates
 reps = 100;
 
 % Initializing data over basis sizes
-storeAhatHF = cell(8, 1);
-storeAhatMF = cell(8, 1);
-storeerrorsHF = cell(8, 1);
-storeerrorsMF = cell(8, 1);
-opInfFull = cell(8, 1);
+storeAhatHF = cell(R, 1);
+storeAhatMF = cell(R, 1);
+storeerrorsHF = cell(R, 1);
+storeerrorsMF = cell(R, 1);
+opInfFull = cell(R, 1);
+alphas = cell(R,1);
+ms = cell(R,1);
+m1s = cell(R,1);
+m2s = cell(R,1);
 
-for r = 1:8
+% Getting POD basis with high fidelity state data
+[U, S, ~] = svd(datah, "econ");
+
+%% Looping over basis sizes
+for r = 1:R
+
+% POD basis of size r
 Ur = U(:, 1:r);
 
-% Reduced Hifi Data
-Xhr = Ur'*datah;
-Xhrdot = Ur'*datahdot;
+% Reducing high fidelity data
+Xhr = Ur'*datah; Xhrdot = Ur'*datahdot;
 
-% Reduced Lofi Data
-Xlr = Ur'*datal;
-Xlrdot = Ur'*dataldot;
+% Reducing low fidelity data
+Xlr = Ur'*datal; Xlrdot = Ur'*dataldot;
 
 % Taking the covariance to be exact
 XXT = (1./size(Xhr, 2))*(Xhr*Xhr'); 
 
 % Full OpInf to be "True"
-Ahat_true = (XXT+1e-3*eye(r))\((1./size(Xhr, 2))*Xhr*Xhrdot');
+Ahat_true = opinf(Xhr, Xhrdot, size(Xhr, 2), XXT);
 opInfFull{r} = Ahat_true;
 
-%% Writing it in MFLR form
+%% "Optimal" MFLR Parameters
+% Finding control variate term
+bigG = getStats(Xhr, Xhrdot, Xlr, Xlrdot);
+alpha = optimalControlVariate(bigG);
+[m1, m2, a1, a2] = mflrOptimalSampleSize(bigG, w, p); % multifidelity 
+% [m1, m2] = mfmcOptimalSampleSize(p, w, Xhrdot, Xlrdot); % multifidelity
 
-% Initializing Ahats
+
+%% Finding "optimal" sample size
+m = floor(p./w(1)); % single fidelity
+
+% Initializing Ahats and operator errors
 Ahat_hf = cell(length(p), reps);
 Ahat_mf = cell(length(p), reps);
-
-% Initializing Errors
 hf_errors = zeros(length(p), reps);
 mf_errors = zeros(length(p), reps);
 
-% Finding control variate term
-alpha = zeros(r, 1);
-for i = 1:r
-    ghigh = Xhr.*Xhrdot(i, :);
-    glow = Xlr.*Xlrdot(i, :);
-
-    ghighvar = ghigh - mean(ghigh);
-    glowvar = glow - mean(glow);
-
-    Gamhl = (ghighvar * glowvar') / (size(glowvar,2) - 1);
-    Gamll = (glowvar * glowvar') / (size(glowvar,2) - 1);
-    alpha(i) = trace(Gamhl)/trace(Gamll);
-end
-
-%% Find "optimal" sample size
-rhos = zeros(r, 3);
-m1 = zeros(r, length(p));
-m2 = zeros(r, length(p));
-rhos(:, 1) = ones(r, 1);
-for i = 1:r
-    temp = corrcoef(Xhrdot(i, :), Xlrdot(i, :));
-    rhos(i, 1:end-1) = temp(1, :);
-    rs = sqrt( w(1)*(rhos(i, 1:end-1).^2 - rhos(i, 2:end).^2) ./ (w'*(1 - rhos(i, 2).^2)))';
-    m1(i, :) = floor(p./(w'*rs));
-    m2(i, :) = floor(m1(i, :).*rs(2));
-end
-m2(m2 > size(datah, 2)) = size(datah, 2);
-m = floor(p./w(1));
-
-%% Looping for replicates
+%% Looping over replicates
 for k = 1:reps
     for j = 1:length(p)
-    indsSF = randperm(size(datah, 2), m(j));
-    indsMF = randperm(size(datah, 2), m2(r, j));
-
-    % Initializing Ahats
-    Ahat_hf{j, k} = zeros(r, r);
-    Ahat_mf{j, k} = zeros(r, r);
-
-    % Single fi Data
-    X = Xhr(:, indsSF);
-    Y = Xhrdot(:, indsSF)';
-
-    % MFMC: Hifi Data 
-    Xh = Xhr(:, indsMF(1:m1(r, j)));
-    Yh = Xhrdot(:, indsMF(1:m1(r, j)))';
-
-    % MFMC: Lofi Data
-    Xl1 = Xlr(:, indsMF(1:m1(r, j)));
-    Yl1 = Xlrdot(:, indsMF(1:m1(r, j)))';
-    Xl2 = Xlr(:, indsMF);
-    Yl2 = Xlrdot(:, indsMF)';
-    
-    for i = 1:r
-        % single fidelity
-        beta_single = (XXT+1e-3*eye(r))\((1./size(Y, 1))*X*Y(:, i));
-        Ahat_hf{j, k}(i, :) = beta_single';
-
-        % Multifidelity
-        XYlm1 = (1./size(Yl1, 1))*Xl1*Yl1(:, i);
-        XYlm2 = (1./size(Yl2, 1))*Xl2*Yl2(:, i);
-        XYhm1 = (1./size(Yh, 1))*Xh*Yh(:, i);
-        XYmulti = XYhm1 + alpha(i)*(XYlm2 - XYlm1);
-        beta_multi = (XXT+1e-2*eye(r))\(XYmulti);
-        Ahat_mf{j, k}(i, :) = beta_multi';
-    end
+    Ahat_hf{j, k} = opinf(Xhr, Xhrdot, m(j), XXT);
+    Ahat_mf{j, k} =  mfopinf(Xhr, Xhrdot, Xlr, Xlrdot, m1(:, j), m2(:, j), alpha, XXT);
 
     hf_errors(j, k) = norm(Ahat_hf{j, k} - Ahat_true, "fro")./norm(Ahat_true, "fro");
     mf_errors(j, k) = norm(Ahat_mf{j, k} - Ahat_true, "fro")./norm(Ahat_true, "fro");
     end
-
 end 
-    storeAhatHF{r} = Ahat_hf;
-    storeAhatMF{r} = Ahat_mf;
-    
-    storeerrorsHF{r} = hf_errors;
-    storeerrorsMF{r} = mf_errors;
+% Storing variables
+storeAhatHF{r} = Ahat_hf;
+storeAhatMF{r} = Ahat_mf;
+storeerrorsHF{r} = hf_errors;
+storeerrorsMF{r} = mf_errors;
+alphas{r} = alpha; ms{r} = m; m1s{r} = m1; m2s{r} = m2;
+disp(r + "")
 end
 
-
-%% Getting initial conditions
-% Training Data
-K = 5;
-x = linspace(0, 1, size(U, 1));
-x0 = getIC(x, para(:, 1));
-t = linspace(0, 1 * K./1000, K + 1);
-
-% getting true state
-N = 128; mu = 0.01;
-operators = getMatrices(N, mu, "heat");
-A = operators.A;
-true_state = backwardEuler(A, x0, t);
-
-%
-r = 8;
-state_errorHF = cell(1, length(p));
-state_errorMF = cell(1, length(p));
-for i = 1:r
-    Ur = U(:, 1:i);
-    x0r = Ur'*x0;
-    for j = 1:length(p)
-        for k = 1:reps
-            esti_rstateHF = backwardEuler(storeAhatHF{i}{j, k}, x0r, t);
-            esti_rstateMF = backwardEuler(storeAhatMF{i}{j, k}, x0r, t);
-            state_errorHF{j}(i, k) = norm(true_state - Ur*esti_rstateHF, "fro")./norm(true_state, "fro");
-            state_errorMF{j}(i, k) = norm(true_state - Ur*esti_rstateMF, "fro")./norm(true_state, "fro");
-        end
-    end
-end
-
-
-% Plotting
+%% Plotting Operator Error
 rbg = orderedcolors("gem");
-figure(4); clf(4)
-set(gcf, 'Position', [100 100 800 450])
-ranks = 1:6;
-for i = 1:5
-    r = 1:5;
-    subplot(1, 5, i)
-    meanHF = mean(state_errorHF{r(i)}, 2);
-    meanMF = mean(state_errorMF{r(i)}, 2);
-    meanHF = meanHF(ranks);
-    meanMF = meanMF(ranks);
-    semilogy(ranks, meanHF, "Color", rbg(1, :))
-    hold on
-    semilogy(ranks, meanMF, "Color", rbg(2, :))
-    stdHF = std(state_errorMF{r(i)}');
-    stdMF = std(state_errorMF{r(i)}');
-    stdHF = stdHF(ranks);
-    stdMF = stdMF(ranks);
-    patch([ranks'; flip(ranks)'], [meanHF-stdHF'; flip(meanHF+stdHF')], 'b', 'FaceAlpha', 0.1, 'EdgeColor','none')
-    patch([ranks'; flip(ranks)'], [meanMF-stdMF'; flip(meanMF+stdMF')], 'r', 'FaceAlpha', 0.1, 'EdgeColor','none')
-    xlabel("Basis Size")
-    ylabel("State Error")
-    sgtitle("Budget versus State Error: " + K + " Timesteps")
-    title("Budget $p = " + p(r(i)) + "$")
-    legend("Single Fidelity", "Multifidelity", "location", "southwest")
-    xlim([min(ranks), max(ranks)])
-    ylim([0.001, 1])
-end
 
-
-%% Plotting
-rbg = orderedcolors("gem");
-figure(1); clf(1)
-for r = 1:8
-    subplot(2, 4, r)
-    meanHF = mean(storeerrorsHF{r}, 2);
-    meanMF = mean(storeerrorsMF{r}, 2);
-    loglog(p, meanHF, "Color", rbg(1, :))
+figure(2); clf(2)
+for r = 1:R
+    subplot(2, ceil(R/2), r)
+    loglog(p, mean(storeerrorsHF{r}, 2), "Color", rbg(1, :))
     hold on
-    loglog(p, meanMF, "Color", rbg(2, :))
-    stdHF = std(storeerrorsMF{r}');
-    stdMF = std(storeerrorsMF{r}');
-    patch([p'; flip(p)'], [meanHF-stdHF'; flip(meanHF+stdHF')], 'b', 'FaceAlpha', 0.1, 'EdgeColor','none')
-    patch([p'; flip(p)'], [meanMF-stdMF'; flip(meanMF+stdMF')], 'r', 'FaceAlpha', 0.1, 'EdgeColor','none')
+    loglog(p, mean(storeerrorsMF{r}, 2), "Color", rbg(2, :))
+    loglog(p, storeerrorsHF{r}, "Color", [rbg(1, :) 0.1], "LineWidth", 0.01)
+    loglog(p, storeerrorsMF{r}, "Color", [rbg(2, :) 0.1], "LineWidth", 0.01)
     xlabel("Budget")
     ylabel("Error")
-    sgtitle("Budget versus Operator Error")
-    title("Basis Size $r = " + r + "$")
+    % sgtitle("Budget versus Operator Error Relative to Optimal OpInf")
+    title("Reduced Dimension $r = " + r + "$")
     legend("Single Fidelity", "Multifidelity")
     xlim([min(p), max(p)])
 end
 
+%%
+for r = 1:R
+    subplot(2, ceil(R/2), r)
+    hold on
+    ylim([10^-3, 10^0])
+end
 
+%%
+% figure(2); clf(2)
+% rbg = orderedcolors("gem");
+% for r = 1:R
+%     meanHF = mean(storeerrorsHF{r}, 2);
+%     meanMF = mean(storeerrorsMF{r}, 2);
+% 
+%     subplot(2, 3, r)
+%     loglog(p, meanHF, "Color", rbg(1,:))
+%     hold on
+%     loglog(p, meanMF,"Color", rbg(2,:))
+%     loglog(p, storeerrorsHF{r}, ...
+%         "Color", [rbg(1,:) 0.1], "LineWidth", 0.1)
+%     loglog(p, storeerrorsMF{r}, ...
+%         "Color", [rbg(2,:) 0.1], "LineWidth", 0.1) 
+%     xlabel("Budget")
+%     ylabel("Error")
+%     title("Basis Size $r = " + r + "$", "Interpreter", "latex")
+%     xlim([min(p), max(p)])
+%     legend("Single Fidelity", "Multi-Fidelity ")
+% end
+% sgtitle("Budget versus Operator Error")
+% 
+% 
+% %% Getting initial conditions
+% % Training Data
+% K = 100; % max timesteps to test
+% numIC = 100;
+% x = linspace(0, 1, size(U, 1));
+% x0 = getIC(x, para(:, 1:numIC));
+% t = linspace(0, 1 * K./1000, K + 1);
+% 
+% % getting true state
+% N = 128; mu = 0.01;
+% operators = getMatrices(N, mu, "heat");
+% A = operators.A;
+% for m = 1:numIC
+% true_state = backwardEuler(A, x0(:, m), t);
+% state_errorHF1 = cell(1, length(p));
+% state_errorMF1 = cell(1, length(p));
+% state_errorHF2 = cell(1, length(p));
+% state_errorMF2 = cell(1, length(p));
+% state_errorHF3 = cell(1, length(p));
+% state_errorMF3 = cell(1, length(p));
+% for j = 1:R
+%     Ur = U(:, 1:j);
+%     x0r = Ur'*x0(:, m);
+%     for i = 1:length(p)
+%         for k = 1:reps
+%             esti_rstateHF = backwardEuler(storeAhatHF{j}{i, k}, x0r, t);
+%             esti_rstateMF = backwardEuler(storeAhatMF{j}{i, k}, x0r, t);
+% 
+%             state_errorHF1{i}(j, m, k) = norm(true_state(:, 5) - Ur*esti_rstateHF(:, 5), "fro")./norm(true_state(:, 5), "fro");
+%             state_errorMF1{i}(j, m, k) = norm(true_state(:, 5) - Ur*esti_rstateMF(:, 5), "fro")./norm(true_state(:, 5), "fro");
+% 
+%             state_errorHF2{i}(j, m, k) = norm(true_state(:, 20) - Ur*esti_rstateHF(:, 20), "fro")./norm(true_state(:, 20), "fro");
+%             state_errorMF2{i}(j, m, k) = norm(true_state(:, 20) - Ur*esti_rstateMF(:, 20), "fro")./norm(true_state(:, 20), "fro");
+% 
+%             state_errorHF3{i}(j, m, k) = norm(true_state(:, 100) - Ur*esti_rstateHF(:, 100), "fro")./norm(true_state(:, 100), "fro");
+%             state_errorMF3{i}(j, m, k) = norm(true_state(:, 100) - Ur*esti_rstateMF(:, 100), "fro")./norm(true_state(:, 100), "fro");
+%         end
+%     end
+% end
+% end  
+% %%
+% % Plotting State Errors
+% rbg = orderedcolors("gem");
+% figure(3); clf(3)
+% for r = 1:length(p)
+%     subplot(1, length(p), r)
+%     meanerrorHF1 = mean(state_errorHF1{r}, 3);
+%     meanerrorMF1 = mean(state_errorMF1{r}, 3);
+%     meanHF = mean(meanerrorHF1, 2);
+%     meanMF = mean(meanerrorMF1, 2);
+%     semilogy(1:R, meanHF, "Color", rbg(1, :))
+%     hold on
+%     semilogy(1:R, meanMF, "Color", rbg(2, :))
+%     for i = 1:100
+%     semilogy(1:R, meanerrorHF1(:, i), ...
+%         "Color", [rbg(1,:) 0.2], "LineWidth", 0.1)
+%     semilogy(1:R, meanerrorMF1(:, i), ...
+%         "Color", [rbg(2,:) 0.2], "LineWidth", 0.1) 
+%     end
+%     xlabel("Basis Size")
+%     ylabel("Error")
+%     sgtitle("Budget versus State Error: Training Data, Timestep 5")
+%     title("Budget $p = " + p(r) + "$")
+%     legend("Single Fidelity", "Multifidelity")
+%     xlim([1, 6])
+% end
+% %%
+% figure(4); clf(4)
+% for r = 1:length(p)
+%     subplot(1, length(p), r)
+%     meanerrorHF2 = mean(state_errorHF2{r}, 3);
+%     meanerrorMF2 = mean(state_errorMF2{r}, 3);
+%     meanHF = mean(meanerrorHF2, 2);
+%     meanMF = mean(meanerrorMF2, 2);
+%     semilogy(1:R, meanHF, "Color", rbg(1, :))
+%     hold on
+%     semilogy(1:R, meanMF, "Color", rbg(2, :))
+%     loglog(1:R, meanerrorHF2, ...
+%         "Color", [rbg(1,:) 0.1], "LineWidth", 0.1)
+%     loglog(1:R, meanerrorMF2, ...
+%         "Color", [rbg(2,:) 0.1], "LineWidth", 0.1) 
+%     xlabel("Basis Size")
+%     ylabel("Error")
+%     sgtitle("Budget versus State Error: Training Data, Timestep 20")
+%     title("Budget $p = " + p(r) + "$")
+%     legend("Single Fidelity", "Multifidelity")
+%     xlim([1, 6])
+%     ylim([10^-5, 10^-1])
+% end
+% 
+% %%
+% figure(5); clf(5)
+% for r = 1:length(p)
+%     subplot(1, length(p), r)
+%     meanerrorHF3 = mean(state_errorHF3{r}, 3);
+%     meanerrorMF3 = mean(state_errorMF3{r}, 3);
+%     meanHF = mean(meanerrorHF3, 2);
+%     meanMF = mean(meanerrorMF3, 2);
+%     semilogy(1:R, meanHF, "Color", rbg(1, :))
+%     hold on
+%     semilogy(1:R, meanMF, "Color", rbg(2, :))
+%     loglog(1:R, meanerrorHF2, ...
+%         "Color", [rbg(1,:) 0.1], "LineWidth", 0.1)
+%     loglog(1:R, meanerrorMF2, ...
+%         "Color", [rbg(2,:) 0.1], "LineWidth", 0.1) 
+%     xlabel("Basis Size")
+%     ylabel("Error")
+%     sgtitle("Budget versus State Error: Training Data, Timestep 100")
+%     title("Budget $p = " + p(r) + "$")
+%     legend("Single Fidelity", "Multifidelity")
+%     xlim([1, 6])
+%     ylim([10^-5, 10^-1])
+% end
+% 
+% 
+% 
+% 
+% 
+
+
+
+
+
+% % 
+% % %%
+% % rbg = orderedcolors("gem");
+% % figure(3); clf(3)
+% % for r = 1:length(p)
+% %     subplot(1, length(p), r)
+% %     meanerrorHF2 = mean(state_errorHF2{r}, 3);
+% %     meanerrorMF2 = mean(state_errorMF2{r}, 3);
+% %     meanHF = mean(meanerrorHF2, 2);
+% %     meanMF = mean(meanerrorMF2, 2);
+% %     semilogy(1:R, meanHF, "Color", rbg(1, :))
+% %     hold on
+% %     semilogy(1:R, meanMF, "Color", rbg(2, :))
+% %     stdHF = std(meanerrorHF2');
+% %     stdMF = std(meanerrorHF2');
+% %     patch([(1:R)'; (1:R)'], [meanHF-stdHF'; flip(meanHF+stdHF')], 'b', 'FaceAlpha', 0.1, 'EdgeColor','none')
+% %     patch([(1:R)'; (1:R)'], [meanMF-stdMF'; flip(meanMF+stdMF')], 'r', 'FaceAlpha', 0.1, 'EdgeColor','none')
+% %     xlabel("Basis Size")
+% %     ylabel("Error")
+% %     sgtitle("Budget versus State Error: Training Data, Timestep 20")
+% %     title("Budget $p = " + p(r) + "$")
+% %     legend("Single Fidelity", "Multifidelity")
+% %     xlim([1, 6])
+% %     ylim([10^-5, 10^-1])
+% % end
+% % 
+% % %%
+% % rbg = orderedcolors("gem");
+% % figure(4); clf(4)
+% % for r = 1:length(p)
+% %     subplot(1, length(p), r)
+% %     meanerrorHF3 = mean(state_errorHF3{r}, 3);
+% %     meanerrorMF3 = mean(state_errorMF3{r}, 3);
+% %     meanHF = mean(meanerrorHF3, 2);
+% %     meanMF = mean(meanerrorMF3, 2);
+% %     semilogy(1:R, meanHF, "Color", rbg(1, :))
+% %     hold on
+% %     semilogy(1:R, meanMF, "Color", rbg(2, :))
+% %     stdHF = std(meanerrorHF3');
+% %     stdMF = std(meanerrorHF3');
+% %     patch([(1:R)'; (1:R)'], [meanHF-stdHF'; flip(meanHF+stdHF')], 'b', 'FaceAlpha', 0.1, 'EdgeColor','none')
+% %     patch([(1:R)'; (1:R)'], [meanMF-stdMF'; flip(meanMF+stdMF')], 'r', 'FaceAlpha', 0.1, 'EdgeColor','none')
+% %     xlabel("Basis Size")
+% %     ylabel("Error")
+% %     sgtitle("Budget versus State Error: Training Data, Timestep 100")
+% %     title("Budget $p = " + p(r) + "$")
+% %     legend("Single Fidelity", "Multifidelity")
+% %     xlim([1, 6])
+% %     ylim([10^-5, 10^-1])
+% % end
+
+% for r = 1:6
+%     subplot(2, 3, r)
+%     meanHF = mean(storeerrorsHF{r}, 2);
+%     meanMF = mean(storeerrorsMF{r}, 2);
+%     loglog(p, meanHF, "Color", rbg(1, :))
+%     hold on
+%     loglog(p, meanMF, "Color", rbg(2, :))
+%     stdHF = std(storeerrorsMF{r}');
+%     stdMF = std(storeerrorsMF{r}');
+%     patch([p'; flip(p)'], [meanHF-stdHF'; flip(meanHF+stdHF')], 'b', 'FaceAlpha', 0.1, 'EdgeColor','none')
+%     patch([p'; flip(p)'], [meanMF-stdMF'; flip(meanMF+stdMF')], 'r', 'FaceAlpha', 0.1, 'EdgeColor','none')
+%     xlabel("Budget")
+%     ylabel("Error")
+%     sgtitle("Budget versus Operator Error")
+%     title("Basis Size $r = " + r + "$")
+%     legend("Single Fidelity", "Multifidelity")
+%     xlim([min(p), max(p)])
+% end
