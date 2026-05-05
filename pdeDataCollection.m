@@ -25,22 +25,27 @@ tl = linspace(0, T, K(2)+1);
 t = t(1:timesteps + 1);
 tl = tl(1:timesteps + 1);
 
-p = 6000; q = 20;
-para = getRandIC(p, q);
-x0 = getIC(x, para);
-x0l = getIC(xl, para);
+num_samples = 200000;
+max_param = 60;
+xi = getRandIC(max_param, num_samples);
+x0 = getIC(x, xi);
+x0l = getIC(xl, xi);
 x0l = interp1(xl, x0l, x, "linear"); 
 
-datah = zeros(N(1), p*q);
-datahdot = zeros(N(1), p*q);
-datal = zeros(N(1), p*q);
-dataldot = zeros(N(1), p*q);
+num_test = 100;
+xi_test = getRandIC(max_param, num_test);
+x0_test = getIC(x, xi_test);
+
+datah = zeros(N(1), num_samples);
+datahdot = zeros(N(1), num_samples);
+datal = zeros(N(1), num_samples);
+dataldot = zeros(N(1), num_samples);
 
 %% Generating HEAT EQ Data
 operators = getMatrices(N(1), mu, "heat");
 
 disp("Start Heat Data Collection")
-for i = 1:p*q
+for i = 1:num_samples
 
 % High fidelity data
 Xhtemp = backwardEuler(operators.A, x0(:, i), t);
@@ -58,29 +63,29 @@ datal(:, i) = Xltemp;
 dataldot(:, i) = Xldottemp;
 
 % Tracking
-if mod(i, p*q./20) == 0
-    disp("Heat Percent Done: " + num2str(i*100./(p*q)) + "%")
+if mod(i, num_samples./20) == 0
+    disp("Heat Percent Done: " + num2str(i*100./num_samples) + "%")
 end
 
 end
 
-save("1heatEqData.mat","operators","datah", "datahdot", "datal", "dataldot", "para")
-disp("Variables saved to 1heatEqData.mat")
+save("heatEqData.mat","operators","datah", "datahdot", "datal", "dataldot", "x0", "x0_test")
+disp("Variables saved to new_heatEqData.mat")
 
 %% Generating BURGER EQ Data
 
 % initializing
-datah = zeros(N(1), p*q);
-datahdot = zeros(N(1), p*q);
-datal = zeros(N(1), p*q);
-dataldot = zeros(N(1), p*q);
+datah = zeros(N(1), num_samples);
+datahdot = zeros(N(1), num_samples);
+datal = zeros(N(1), num_samples);
+dataldot = zeros(N(1), num_samples);
 clear operators
 
 operators = getMatrices(N(1), mu, "Burger");
 
 disp("Start Burger Data Collection")
 
-for i = 1:p*q
+for i = 1:num_samples
 
 % High fidelity data
 Xhtemp = semiEuler(operators.A, operators.F, x0(:, i), t);
@@ -98,14 +103,14 @@ datal(:, i) = Xltemp;
 dataldot(:, i) = Xldottemp;
 
 % Tracking
-if mod(i, p*q./100) == 0
-    disp("Burger Percent Done: " + num2str(i*100./(p*q)) + "%")
+if mod(i, num_samples./100) == 0
+    disp("Burger Percent Done: " + num2str(i*100./ num_samples) + "%")
 end
 
 end
 
-save("1BurgerEqData.mat","operators","datah", "datahdot", "datal", "dataldot", "para")
-disp("Variables saved to 1BurgerEqData.mat");
+save("new_BurgerEqData.mat","operators","datah", "datahdot", "datal", "dataldot", "x0", "x0_test")
+disp("Variables saved to new_BurgerEqData.mat");
 
 
 

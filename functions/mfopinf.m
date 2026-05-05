@@ -17,7 +17,7 @@ function Ohat_mf = mfopinf(Xhr, Xhrdot, Xlr, Xlrdot, m1, m2, alpha, XXT)
     XYlm2 = (1./size(Yl2, 1))*Xl2*Yl2(:, i);
     XYhm1 = (1./size(Yh, 1))*Xh*Yh(:, i);
     XYmulti = XYhm1 + alpha(i)*(XYlm2 - XYlm1);
-    beta_multi = (XXT+1e-3*eye(p))\(XYmulti);
+    beta_multi = (XXT)\(XYmulti);
     Ohat_mf(i, :) = beta_multi';
     end
 end

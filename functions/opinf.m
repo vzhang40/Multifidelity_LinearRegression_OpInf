@@ -19,7 +19,7 @@ for i = 1:r
     indsSF = randperm(size(Xr, 2), m);
     X = Xr(:, indsSF);
     Y = Xrdot(:, indsSF)';
-    beta_single = (XXT+1e-3*eye(p))\(1./size(Y, 1).*X*Y(:, i).*1);
+    beta_single = (XXT)\(1./size(Y, 1).*X*Y(:, i).*1);
     Ohat(i, :) = beta_single';
 end
 end

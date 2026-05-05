@@ -1,4 +1,4 @@
-function param = getRandIC(p, q)
+function xi = getRandIC(max_param, num_draws)
 % This function randomly selects parameter inputs for a random initial
 % condition.
 %
@@ -8,20 +8,21 @@ function param = getRandIC(p, q)
 % OUTPUTS: 
 %   param - (2 x pq) parameters [a; b] assoicated with each intial
 %       condition
-    if q ~= 0
-    % Generating random amplitudes
-    a = rand(p, 1);
-
-    % Generating random frequencies
-    b = randi(5, [q, 1]); %
-
-    % parameters
-    param = [repmat(a', 1, q); repelem(b', 1, p)];
-    inds = randperm(p*q);
-    param = param(:, inds);
-    else 
-        a = rand(p, 1);
-        param = [a'; zeros(1, p)];
-    end
+    % if q ~= 0
+    % % Generating random amplitudes
+    % a = rand(p, 1);
+    % 
+    % % Generating random frequencies
+    % b = randi(5, [q, 1]); %
+    % 
+    % % parameters
+    % param = [repmat(a', 1, q); repelem(b', 1, p)];
+    % inds = randperm(p*q);
+    % param = param(:, inds);
+    % else 
+    %     a = rand(p, 1);
+    %     param = [a'; zeros(1, p)];
+    % end
+    xi = randn(max_param,num_draws);
 end
 

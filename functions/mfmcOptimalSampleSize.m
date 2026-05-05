@@ -24,4 +24,6 @@ for i = 1:r
     m1(i, :) = floor(p./(w'*rs));
     m2(i, :) = floor(m1(i, :).*rs(2));
 end
+m1(m1 < 1) = 1;
+m2(m2 - m1 < 0) = m1(m2 - m1 < 0) + 1;
 end
